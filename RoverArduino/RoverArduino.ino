@@ -19,12 +19,12 @@
 // Variables de configuracion
 const double Tm = 0.1; // Periodo de muestreo (NO MODIFICAR DE NO SER COMPLETAMENTE NECESARIO y en caso hacerlo modificar el TIMER1 acorde con el nuevo valor)
 
-const double Kp = 0.5; // Constante proporcional de la rueda DERECHA
-const double Kd = 0.03; // Constante diferencial de la rueda DERECHA
-const double Ki = 0.9; // Constante integral de la rueda DERECHA
+const double Kp_R = 0.9; // Constante proporcional de la rueda DERECHA
+const double Kd_R = 0.02; // Constante diferencial de la rueda DERECHA
+const double Ki_R = 0.9; // Constante integral de la rueda DERECHA
 
-const double Kp_L = 0.5; // Constante proporcional de la rueda IZQUIERDA
-const double Kd_L = 0.03; // Constante diferencial de la rueda IZQUIERDA
+const double Kp_L = 0.7; // Constante proporcional de la rueda IZQUIERDA
+const double Kd_L = 0.02; // Constante diferencial de la rueda IZQUIERDA
 const double Ki_L = 0.9; // Constante integral de la rueda IZQUIERDA
 
 const float SCALER_R = 0.75; // Constante para calibracion de la rueda DERECHA
@@ -33,8 +33,6 @@ const float SCALER_L = 1.0; // Constante para calibracion de la rueda IZQUIERDA
 const float MAX_TORQ = 1500; // Torque máximo (sin unidades) (cambiar solo este parametro no cambia el torque maximo)
 const float MAX_SETPOINT = 350; // Set point maximo de RPM de las ruedas (dar maximo 1000);
 const float DIR_DELTA = 350; //Diferencia entre los setpoints al girar
-
-const int STATE_CHANGE_DELAY = 500; //Tiempo de espera entre cambios de estados en ms
 
 // Variables globales
 struct RoverParameters {  // Parametros recibidos del mando
@@ -142,30 +140,24 @@ ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por comparacion de Timer1
   TCNT1 = 0;
 
   // Calcular RPMs
-  rpm_R = (encoderCount_R * SCALER_R) * 60 / (80.0 * Tm); // 80 pulsos por vuelta
+  rpm_R = (encoderCount_R * SCALER_R) * 60 / (40.0 * Tm); // 40 pulsos por vuelta
   encoderCount_R = 0; // Reiniciar contador de pulsos
 
-  rpm_L = (encoderCount_L * SCALER_L) * 60 / (80.0 * Tm); // 80 pulsos por vuelta
+  rpm_L = (encoderCount_L * SCALER_L) * 60 / (40.0 * Tm); // 40 pulsos por vuelta
   encoderCount_L = 0; // Reiniciar contador de pulsos
 
   // Calcular los set points
   if (direction <= 10 && direction >= -10) direction = 0;
 
   if (setPoint > MAX_SETPOINT) setPoint = MAX_SETPOINT;
-  if (setPoint < 10.0) setPoint = 0.0;
+  if (setPoint < 10.0) setPoint = -350.0;
 
   setPoint_R = setPoint;
   setPoint_L = setPoint;
 
-  if (setPoint_R > MAX_SETPOINT) setPoint_R = MAX_SETPOINT;
-  if (setPoint_L > MAX_SETPOINT) setPoint_L = MAX_SETPOINT;
-  if (setPoint_R < 10.0) setPoint_R = 0.0;
-  if (setPoint_L < 10.0) setPoint_L = 0.0;
-
-
   //Control PID
   error_R = setPoint_R - rpm_R;
-  pidSignal_R = pidSignal1_R + (Kp + Kd / Tm) * error_R + (-Kp + Ki * Tm - 2*Kd / Tm) * error1_R + (Kd / Tm) * error2_R;
+  pidSignal_R = pidSignal1_R + (Kp_R + Kd_R / Tm) * error_R + (-Kp_R + Ki_R * Tm - 2*Kd_R / Tm) * error1_R + (Kd_R / Tm) * error2_R;
 
   if (pidSignal_R > (MAX_TORQ)) pidSignal_R = (MAX_TORQ);
   if (pidSignal_R < 10.0) pidSignal_R = 0.0;
@@ -173,7 +165,6 @@ ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por comparacion de Timer1
   pidSignal1_R = pidSignal_R;
   error2_R = error1_R;
   error1_R = error_R;
-
 
   error_L = setPoint_L - rpm_L;
   pidSignal_L = pidSignal1_L + (Kp_L + Kd_L / Tm) * error_L + (-Kp_L + Ki_L * Tm - 2*Kd_L / Tm) * error1_L + (Kd_L / Tm) * error2_L;
@@ -193,7 +184,7 @@ ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por comparacion de Timer1
   analogWrite(PWM_R_PIN, output_R);
   analogWrite(PWM_L_PIN, output_L);
   
-  //Imprimir los numeros internos
+  //Imprimir los valores internos
   Serial.print(setPoint);
   Serial.print("\t");
   Serial.print(direction);
@@ -259,8 +250,8 @@ void configureEncoderInterrupts() {
   pinMode(ENC_L_PIN, INPUT);
 
   //Habilitar las interrucpiones externas para los encoders
-  attachInterrupt(digitalPinToInterrupt(ENC_R_PIN), updateEncoder_R, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENC_L_PIN), updateEncoder_L, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENC_R_PIN), updateEncoder_R, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENC_L_PIN), updateEncoder_L, RISING);
 
 }
 
@@ -329,10 +320,10 @@ void executeState() {
 
     case ToggleForward:
       digitalWrite(IGNITION_PIN, HIGH); // Apagar los controladores
-      delay(500); // Esperar
+      delay(300); // Esperar
       digitalWrite(REVERSE_L_PIN, HIGH); // Desconectar la reversa de L
       digitalWrite(REVERSE_R_PIN, HIGH); // Desconectar la reversa de R
-      delay(500); // Esperar medio segundo
+      delay(300); // Esperar
       digitalWrite(IGNITION_PIN, LOW); // Encender
       ToggleForward_Blocked = true; // Bloquear este estado y desbloquear los otros
       ToggleRight_Blocked = false;
@@ -344,10 +335,10 @@ void executeState() {
 
     case ToggleRight:
       digitalWrite(IGNITION_PIN, HIGH); // Apagar los controladores
-      delay(500); // Esperar
+      delay(300); // Esperar
       digitalWrite(REVERSE_L_PIN, HIGH); // Desconectar la reversa de L
       digitalWrite(REVERSE_R_PIN, LOW); // Conectar la reversa de R
-      delay(500); // Esperar medio segundo
+      delay(300); // Esperar
       digitalWrite(IGNITION_PIN, LOW); // Encender
       ToggleForward_Blocked = false;
       ToggleRight_Blocked = true; // Bloquear este estado y desbloquear los otros
@@ -359,10 +350,10 @@ void executeState() {
 
     case ToggleLeft:
       digitalWrite(IGNITION_PIN, HIGH); // Apagar los controladores
-      delay(500); // Esperar
+      delay(300); // Esperar
       digitalWrite(REVERSE_L_PIN, LOW); // Conectar la reversa de L
       digitalWrite(REVERSE_R_PIN, HIGH); // Desconecctar la reversa de R
-      delay(500); // Esperar medio segundo
+      delay(300); // Esperar
       digitalWrite(IGNITION_PIN, LOW); // Encender
       ToggleForward_Blocked = false;
       ToggleRight_Blocked = false;
@@ -374,10 +365,10 @@ void executeState() {
 
     case ToggleBackward:
       digitalWrite(IGNITION_PIN, HIGH); // Apagar los controladores
-      delay(500); // Esperar
+      delay(300); // Esperar
       digitalWrite(REVERSE_L_PIN, HIGH); // Desconectar la reversa de L
       digitalWrite(REVERSE_R_PIN, HIGH); // Conectar la reversa de R
-      delay(500); // Esperar medio segundo
+      delay(300); // Esperar
       digitalWrite(IGNITION_PIN, LOW); // Encender
       ToggleForward_Blocked = false;
       ToggleRight_Blocked = false;
