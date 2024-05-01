@@ -12,8 +12,12 @@
 #define PWM_R_PIN 3 // Pin del control PWM de la rueda DERECHA
 #define PWM_L_PIN 46 // Pin del control PWM de la rueda IZQUIERDA
 
+#define IGNITION_PIN 34
+#define REVERSE_R_PIN 30
+#define REVERSE_L_PIN 26
+
 // Variables de configuracion
-const double Tm = 0.1; // Periodo de muestreo
+const double Tm = 0.1; // Periodo de muestreo (NO MODIFICAR DE NO SER COMPLETAMENTE NECESARIO y en caso hacerlo modificar el TIMER1 acorde con el nuevo valor)
 
 const double Kp = 0.5; // Constante proporcional de la rueda DERECHA
 const double Kd = 0.03; // Constante diferencial de la rueda DERECHA
@@ -30,12 +34,30 @@ const float MAX_TORQ = 1500; // Torque máximo (sin unidades) (cambiar solo este
 const float MAX_SETPOINT = 350; // Set point maximo de RPM de las ruedas (dar maximo 1000);
 const float DIR_DELTA = 350; //Diferencia entre los setpoints al girar
 
+const int STATE_CHANGE_DELAY = 500; //Tiempo de espera entre cambios de estados en ms
+
 // Variables globales
 struct RoverParameters {  // Parametros recibidos del mando
   int Throttle;           // Velocidad de las ruedas
   int Direction;          // Direccion de las ruedas
   int Pump;               // Bomba
 } receivedParameters;
+
+enum State {
+  Run,
+  ToggleForward,
+  ToggleRight,
+  ToggleLeft,
+  ToggleBackward
+};
+
+State currentState = Run;
+State nextState = Run;
+
+bool ToggleForward_Blocked = true;
+bool ToggleRight_Blocked = false;
+bool ToggleLeft_Blocked = false;
+bool ToggleBackward_Blocked = false;
 
 uint32_t receivedChecksum; //VAriable en la que guardaremos la suma de verificacion de error
 
@@ -75,11 +97,13 @@ void setup() {
   Serial.begin(9600); // Inicializar la comunicacion serial
   
   //Configuracion de perifericos
+  configureReles();
   configureLORA(); //Configurar el modulo LORA
   configureEncoderInterrupts(); //Configurar las interrupciones por los encoders
   configurePWMTimers(); //Configurar las salidas PWM a 16 bits
   configureTimerInterrupts(); //configurar las interrupciones por timers
 
+  currentState = Run;
 }
 
 void loop() {
@@ -102,11 +126,17 @@ void loop() {
     //Serial.println("Fallo de verificación de checksum. Mensaje corrupto.");
 
   }
-
   
+
+  if (rpm_R == 0.0 && rpm_L == 0.0) {
+
+    executeState();
+
+  }
+
 }
 
-ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por overflow de Timer1
+ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por comparacion de Timer1
 
   // Reiniciar el contador
   TCNT1 = 0;
@@ -117,15 +147,15 @@ ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por overflow de Timer1
 
   rpm_L = (encoderCount_L * SCALER_L) * 60 / (80.0 * Tm); // 80 pulsos por vuelta
   encoderCount_L = 0; // Reiniciar contador de pulsos
-  
+
   // Calcular los set points
   if (direction <= 10 && direction >= -10) direction = 0;
 
   if (setPoint > MAX_SETPOINT) setPoint = MAX_SETPOINT;
   if (setPoint < 10.0) setPoint = 0.0;
 
-  setPoint_R = setPoint + direction;
-  setPoint_L = setPoint - direction;
+  setPoint_R = setPoint;
+  setPoint_L = setPoint;
 
   if (setPoint_R > MAX_SETPOINT) setPoint_R = MAX_SETPOINT;
   if (setPoint_L > MAX_SETPOINT) setPoint_L = MAX_SETPOINT;
@@ -182,7 +212,7 @@ ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por overflow de Timer1
   Serial.print(rpm_R);
   Serial.print("\t");
   Serial.println(rpm_L);
-
+  
 }
 
 // Funciones
@@ -195,6 +225,18 @@ void updateEncoder_R() {
 void updateEncoder_L() {
   // Actualizar el contador de pulsos del ENC_R_PIN
   encoderCount_L++;
+}
+
+void configureReles() {
+
+  pinMode(IGNITION_PIN, OUTPUT);
+  pinMode(REVERSE_R_PIN, OUTPUT);
+  pinMode(REVERSE_L_PIN, OUTPUT);
+
+  digitalWrite(IGNITION_PIN, LOW);
+  digitalWrite(REVERSE_R_PIN, HIGH);
+  digitalWrite(REVERSE_L_PIN, HIGH);
+
 }
 
 void configureLORA() {
@@ -268,3 +310,88 @@ void configurePWMTimers() {
   sei();
 
 }
+
+void executeState() {
+  switch (currentState) {
+    case Run:
+      //Serial.println("RUN");
+      if (direction < 100 && direction > -100 && !ToggleForward_Blocked){
+        nextState = ToggleForward;
+      }
+      if (direction < -200 && !ToggleRight_Blocked){
+        nextState = ToggleRight;
+      }
+      if (direction > 200 && !ToggleLeft_Blocked){
+        nextState = ToggleLeft;
+      }
+      //Serial.println("Run mode");
+      break;
+
+    case ToggleForward:
+      digitalWrite(IGNITION_PIN, HIGH); // Apagar los controladores
+      delay(500); // Esperar
+      digitalWrite(REVERSE_L_PIN, HIGH); // Desconectar la reversa de L
+      digitalWrite(REVERSE_R_PIN, HIGH); // Desconectar la reversa de R
+      delay(500); // Esperar medio segundo
+      digitalWrite(IGNITION_PIN, LOW); // Encender
+      ToggleForward_Blocked = true; // Bloquear este estado y desbloquear los otros
+      ToggleRight_Blocked = false;
+      ToggleLeft_Blocked = false;
+      ToggleBackward_Blocked = false;
+      nextState = Run; // Volver al estado Run en el siguiente ciclo
+      //Serial.println("Listo para avanzar hacia adelante");
+      break;
+
+    case ToggleRight:
+      digitalWrite(IGNITION_PIN, HIGH); // Apagar los controladores
+      delay(500); // Esperar
+      digitalWrite(REVERSE_L_PIN, HIGH); // Desconectar la reversa de L
+      digitalWrite(REVERSE_R_PIN, LOW); // Conectar la reversa de R
+      delay(500); // Esperar medio segundo
+      digitalWrite(IGNITION_PIN, LOW); // Encender
+      ToggleForward_Blocked = false;
+      ToggleRight_Blocked = true; // Bloquear este estado y desbloquear los otros
+      ToggleLeft_Blocked = false;
+      ToggleBackward_Blocked = false;
+      nextState = Run; // Volver al estado Run en el siguiente ciclo
+      //Serial.println("Listo para avanzar girar a la derecha");
+      break;
+
+    case ToggleLeft:
+      digitalWrite(IGNITION_PIN, HIGH); // Apagar los controladores
+      delay(500); // Esperar
+      digitalWrite(REVERSE_L_PIN, LOW); // Conectar la reversa de L
+      digitalWrite(REVERSE_R_PIN, HIGH); // Desconecctar la reversa de R
+      delay(500); // Esperar medio segundo
+      digitalWrite(IGNITION_PIN, LOW); // Encender
+      ToggleForward_Blocked = false;
+      ToggleRight_Blocked = false;
+      ToggleLeft_Blocked = true; // Bloquear este estado y desbloquear los otros
+      ToggleBackward_Blocked = false;
+      nextState = Run; // Volver al estado Run en el siguiente ciclo
+      //Serial.println("Listo para avanzar a la izquierda");
+      break;
+
+    case ToggleBackward:
+      digitalWrite(IGNITION_PIN, HIGH); // Apagar los controladores
+      delay(500); // Esperar
+      digitalWrite(REVERSE_L_PIN, HIGH); // Desconectar la reversa de L
+      digitalWrite(REVERSE_R_PIN, HIGH); // Conectar la reversa de R
+      delay(500); // Esperar medio segundo
+      digitalWrite(IGNITION_PIN, LOW); // Encender
+      ToggleForward_Blocked = false;
+      ToggleRight_Blocked = false;
+      ToggleLeft_Blocked = false;
+      ToggleBackward_Blocked = true; // Bloquear este estado y desbloquear los otros
+      nextState = Run; // Volver al estado Run en el siguiente ciclo
+      //Serial.println("Listo para avanzar hacia atras");
+      break;
+
+  }
+  currentState = nextState;
+}
+
+  
+  
+  
+  
