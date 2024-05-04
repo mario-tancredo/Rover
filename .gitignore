@@ -1,3 +1,6 @@
 # Ignore folder called Lora_Controller_PCB
+CameraExample/
 Lora_Controller_PCB/
+RoverMainboard/
+CameraWebServerExample/
 .Documentation/
