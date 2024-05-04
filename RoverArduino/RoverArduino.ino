@@ -12,6 +12,7 @@
 #define PWM_R_PIN 3 // Pin del control PWM de la rueda DERECHA
 #define PWM_L_PIN 46 // Pin del control PWM de la rueda IZQUIERDA
 
+#define BRAKE_PIN 38
 #define IGNITION_PIN 34
 #define REVERSE_R_PIN 30
 #define REVERSE_L_PIN 26
@@ -132,6 +133,18 @@ void loop() {
 
   }
 
+  if (setPoint < -200) {
+
+    digitalWrite(BRAKE_PIN, LOW); // Activar el freno
+
+  }
+  else{
+
+    digitalWrite(BRAKE_PIN, HIGH); // Desactivar el freno
+
+  }
+
+
 }
 
 ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por comparacion de Timer1
@@ -149,11 +162,13 @@ ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por comparacion de Timer1
   // Calcular los set points
   if (direction <= 10 && direction >= -10) direction = 0;
 
-  if (setPoint > MAX_SETPOINT) setPoint = MAX_SETPOINT;
-  if (setPoint < 10.0) setPoint = -350.0;
-
   setPoint_R = setPoint;
   setPoint_L = setPoint;
+
+  if (setPoint_R > MAX_SETPOINT) setPoint_R = MAX_SETPOINT;
+  if (setPoint_R < 10.0) setPoint_R = -350.0;
+  if (setPoint_L > MAX_SETPOINT) setPoint_L = MAX_SETPOINT;
+  if (setPoint_L < 10.0) setPoint_L = -350.0;
 
   //Control PID
   error_R = setPoint_R - rpm_R;
@@ -220,10 +235,12 @@ void updateEncoder_L() {
 
 void configureReles() {
 
+  pinMode(BRAKE_PIN, OUTPUT);
   pinMode(IGNITION_PIN, OUTPUT);
   pinMode(REVERSE_R_PIN, OUTPUT);
   pinMode(REVERSE_L_PIN, OUTPUT);
 
+  digitalWrite(BRAKE_PIN, HIGH);
   digitalWrite(IGNITION_PIN, LOW);
   digitalWrite(REVERSE_R_PIN, HIGH);
   digitalWrite(REVERSE_L_PIN, HIGH);
