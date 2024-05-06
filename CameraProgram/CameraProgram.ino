@@ -22,8 +22,8 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-const char* ssid = "HUAWEI Y6 2019";
-const char* password = "70fe618908cc";
+const char* ssid = "MOVISTAR_440E";
+const char* password = "PpBjA4A4uPXhQU6bLkjL";
 
 WiFiServer server(80);
 
@@ -104,6 +104,14 @@ void loop() {
   // Return the response
   String response = "HTTP/1.1 200 OK\r\n";
   response += "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n\r\n";
+  response += "<!DOCTYPE html><html><head><title>ESP32-CAM Web Server</title></head><body>";
+  response += "<h1>ESP32-CAM Web Server</h1>";
+  response += "<h2>Servo Control</h2>";
+  response += "<p>Servo 1: <input type=\"range\" min=\"0\" max=\"180\" value=\"90\" id=\"servo1\"></p>";
+  response += "<p>Servo 2: <input type=\"range\" min=\"0\" max=\"180\" value=\"90\" id=\"servo2\"></p>";
+  response += "<script>var slider1 = document.getElementById('servo1'); var slider2 = document.getElementById('servo2');";
+  response += "function updateServos() {var xhttp = new XMLHttpRequest(); xhttp.open('GET', '/updateServos?servo1='+slider1.value+'&servo2='+slider2.value, true); xhttp.send();}</script>";
+  response += "</body></html>";
   client.print(response);
 
   // Stream video frames
