@@ -4,3 +4,6 @@
 #Ignore PCB projects
 RoverMainboard/
 ControlerBoard/
+
+#Ignore Makefiles
+*Makefile
