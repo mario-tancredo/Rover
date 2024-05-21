@@ -24,7 +24,7 @@ const double Kp_R = 0.9; // Constante proporcional de la rueda DERECHA
 const double Kd_R = 0.02; // Constante diferencial de la rueda DERECHA
 const double Ki_R = 0.9; // Constante integral de la rueda DERECHA
 
-const double Kp_L = 0.7; // Constante proporcional de la rueda IZQUIERDA
+const double Kp_L = 0.9; // Constante proporcional de la rueda IZQUIERDA
 const double Kd_L = 0.02; // Constante diferencial de la rueda IZQUIERDA
 const double Ki_L = 0.9; // Constante integral de la rueda IZQUIERDA
 
@@ -32,8 +32,8 @@ const float SCALER_R = 0.75; // Constante para calibracion de la rueda DERECHA
 const float SCALER_L = 1.0; // Constante para calibracion de la rueda IZQUIERDA
 
 const float MAX_TORQ = 1500; // Torque máximo (sin unidades) (cambiar solo este parametro no cambia el torque maximo)
-const float MAX_SETPOINT = 350; // Set point maximo de RPM de las ruedas (dar maximo 1000);
-const float DIR_DELTA = 350; //Diferencia entre los setpoints al girar
+const float MAX_SETPOINT = 200; // Set point maximo de RPM de las ruedas (dar maximo 1000);
+const float DIR_DELTA = 70; //Diferencia entre los setpoints al girar
 
 // Variables globales
 struct RoverParameters {  // Parametros recibidos del mando
@@ -86,6 +86,7 @@ double rpm_L = 0.0; // Velocidad de la rueda IZQUIERDA
 uint16_t output_R; // Salida del PID en forma de PWM
 uint16_t output_L; //Salida del PID en forma de PWM
 
+uint16_t brakeCount; // Cuenta para activar el freno en caso de desconexion con el mando
 
 // Inicializar objetos
 CRC32 crc; // Inicializar objeto CRC32 para la deteccion de errores
@@ -108,7 +109,21 @@ void setup() {
 void loop() {
 
   //Recibir el mensaje con los paremetros
-  while (Serial3.read() != 0xAA); // Esperar a la siguiente cabecera del mensaje
+  while (Serial3.read() != 0xAA) { // Esperar a la siguiente cabecera del mensaje
+    
+    brakeCount++;
+    
+    if (brakeCount > 50000) {
+
+      digitalWrite(BRAKE_PIN, LOW);      
+
+    }
+  }
+  
+  brakeCount = 0;
+  digitalWrite(BRAKE_PIN, HIGH);
+
+
   Serial3.readBytes((uint8_t*)&receivedParameters, sizeof(receivedParameters)); // Leer el payload
   Serial3.readBytes((uint8_t*)&receivedChecksum, sizeof(receivedChecksum));   // Leer el checksum
 
@@ -126,14 +141,15 @@ void loop() {
 
   }
   
-
+  /*
   if (rpm_R == 0.0 && rpm_L == 0.0) {
 
     executeState();
 
   }
-
-  if (setPoint < -200) {
+  */
+  /*
+  if (setPoint < -100) {
 
     digitalWrite(BRAKE_PIN, LOW); // Activar el freno
 
@@ -143,7 +159,7 @@ void loop() {
     digitalWrite(BRAKE_PIN, HIGH); // Desactivar el freno
 
   }
-
+  */
 
 }
 
@@ -153,17 +169,17 @@ ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por comparacion de Timer1
   TCNT1 = 0;
 
   // Calcular RPMs
-  rpm_R = (encoderCount_R * SCALER_R) * 60 / (40.0 * Tm); // 40 pulsos por vuelta
+  rpm_R = (encoderCount_R * SCALER_R) * 60 / (80.0 * Tm); // 40 pulsos por vuelta
   encoderCount_R = 0; // Reiniciar contador de pulsos
 
-  rpm_L = (encoderCount_L * SCALER_L) * 60 / (40.0 * Tm); // 40 pulsos por vuelta
+  rpm_L = (encoderCount_L * SCALER_L) * 60 / (80.0 * Tm); // 40 pulsos por vuelta
   encoderCount_L = 0; // Reiniciar contador de pulsos
 
   // Calcular los set points
   if (direction <= 10 && direction >= -10) direction = 0;
 
-  setPoint_R = setPoint;
-  setPoint_L = setPoint;
+  setPoint_R = setPoint + direction;
+  setPoint_L = setPoint - direction;
 
   if (setPoint_R > MAX_SETPOINT) setPoint_R = MAX_SETPOINT;
   if (setPoint_R < 10.0) setPoint_R = -350.0;
@@ -267,8 +283,8 @@ void configureEncoderInterrupts() {
   pinMode(ENC_L_PIN, INPUT);
 
   //Habilitar las interrucpiones externas para los encoders
-  attachInterrupt(digitalPinToInterrupt(ENC_R_PIN), updateEncoder_R, RISING);
-  attachInterrupt(digitalPinToInterrupt(ENC_L_PIN), updateEncoder_L, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENC_R_PIN), updateEncoder_R, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENC_L_PIN), updateEncoder_L, CHANGE);
 
 }
 
