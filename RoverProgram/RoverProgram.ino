@@ -20,20 +20,20 @@
 // Variables de configuracion
 const double Tm = 0.1; // Periodo de muestreo (NO MODIFICAR DE NO SER COMPLETAMENTE NECESARIO y en caso hacerlo modificar el TIMER1 acorde con el nuevo valor)
 
-const double Kp_R = 0.9; // Constante proporcional de la rueda DERECHA
-const double Kd_R = 0.02; // Constante diferencial de la rueda DERECHA
-const double Ki_R = 0.9; // Constante integral de la rueda DERECHA
+const double Kp_R = 3.5; // Constante proporcional de la rueda DERECHA
+const double Kd_R = 0.001; // Constante diferencial de la rueda DERECHA
+const double Ki_R = 1.2; // Constante integral de la rueda DERECHA
 
-const double Kp_L = 0.9; // Constante proporcional de la rueda IZQUIERDA
-const double Kd_L = 0.02; // Constante diferencial de la rueda IZQUIERDA
-const double Ki_L = 0.9; // Constante integral de la rueda IZQUIERDA
+const double Kp_L = 3.5; // Constante proporcional de la rueda IZQUIERDA
+const double Kd_L = 0.001; // Constante diferencial de la rueda IZQUIERDA
+const double Ki_L = 1.2; // Constante integral de la rueda IZQUIERDA
 
 const float SCALER_R = 0.75; // Constante para calibracion de la rueda DERECHA
 const float SCALER_L = 1.0; // Constante para calibracion de la rueda IZQUIERDA
 
-const float MAX_TORQ = 1500; // Torque máximo (sin unidades) (cambiar solo este parametro no cambia el torque maximo)
+const float MAX_TORQ = 2000; // Torque máximo (sin unidades) (cambiar solo este parametro no cambia el torque maximo)
 const float MAX_SETPOINT = 200; // Set point maximo de RPM de las ruedas (dar maximo 1000);
-const float DIR_DELTA = 70; //Diferencia entre los setpoints al girar
+const float DIR_DELTA = 90; //Diferencia entre los setpoints al girar
 
 // Variables globales
 struct RoverParameters {  // Parametros recibidos del mando
@@ -86,7 +86,7 @@ double rpm_L = 0.0; // Velocidad de la rueda IZQUIERDA
 uint16_t output_R; // Salida del PID en forma de PWM
 uint16_t output_L; //Salida del PID en forma de PWM
 
-uint16_t brakeCount; // Cuenta para activar el freno en caso de desconexion con el mando
+uint32_t brakeCount; // Cuenta para activar el freno en caso de desconexion con el mando
 
 // Inicializar objetos
 CRC32 crc; // Inicializar objeto CRC32 para la deteccion de errores
@@ -113,15 +113,14 @@ void loop() {
     
     brakeCount++;
     
-    if (brakeCount > 50000) {
+    if (brakeCount > 75000) {
 
       digitalWrite(BRAKE_PIN, LOW);      
 
     }
-  }
-  
+  } 
   brakeCount = 0;
-  digitalWrite(BRAKE_PIN, HIGH);
+  //digitalWrite(BRAKE_PIN, HIGH);
 
 
   Serial3.readBytes((uint8_t*)&receivedParameters, sizeof(receivedParameters)); // Leer el payload
@@ -141,6 +140,45 @@ void loop() {
 
   }
   
+  if (setPoint <= 5 && setPoint >= -5 && direction <= 5 && direction >= -5) {
+    
+    digitalWrite(BRAKE_PIN, LOW);
+    
+    //setPoint_R = 0; //Set point de velocidad de la rueda DERECHA
+    error_R = 0.0; // Error entre la velocidad y el setpoint
+    error1_R = 0.0; // Error anterior
+    error2_R = 0.0; // Error anterior anterior
+    pidSignal_R = 0.0; // Resultado del PID
+    pidSignal1_R = 0.0; // Resultado anterior del PID
+
+    //setPoint_L = 0; //Set point de velocidad de la rueda IZQUIERDA
+    error_L = 0.0; // Error entre la velocidad y el setpoint
+    error1_L = 0.0; // Error anterior
+    error2_L = 0.0; // Error anterior anterior
+    pidSignal_L = 0.0; // Resultado del PID
+    pidSignal1_L = 0.0; // Resultado anterior del PID
+
+  } else {
+
+    digitalWrite(BRAKE_PIN, HIGH);
+
+  }
+
+  if (rpm_R == 0.0 && rpm_L == 0.0) {
+
+    if (setPoint <= -5) {
+
+      digitalWrite(REVERSE_R_PIN, LOW);
+      digitalWrite(REVERSE_L_PIN, LOW);
+
+    } else {
+
+      digitalWrite(REVERSE_R_PIN, HIGH);
+      digitalWrite(REVERSE_L_PIN, HIGH);
+
+    }
+
+  }
   /*
   if (rpm_R == 0.0 && rpm_L == 0.0) {
 
@@ -182,9 +220,11 @@ ISR(TIMER1_COMPA_vect) { // Rutina de interrupción por comparacion de Timer1
   setPoint_L = setPoint - direction;
 
   if (setPoint_R > MAX_SETPOINT) setPoint_R = MAX_SETPOINT;
-  if (setPoint_R < 10.0) setPoint_R = -350.0;
+  if (setPoint_R <= 10.0 && setPoint_R >= -100) setPoint_R = -90.0;
+  if (setPoint_R <= -100) setPoint_R = -1 * setPoint_R;
   if (setPoint_L > MAX_SETPOINT) setPoint_L = MAX_SETPOINT;
-  if (setPoint_L < 10.0) setPoint_L = -350.0;
+  if (setPoint_L <= 10.0 && setPoint_L >= -100) setPoint_L = -90.0;
+  if (setPoint_L <= -100) setPoint_L = -1 * setPoint_L;
 
   //Control PID
   error_R = setPoint_R - rpm_R;
